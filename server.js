@@ -6,6 +6,7 @@ const cors = require('cors'); // We need CORS
 const authRoutes = require('./routes/auth');
 const teacherRoutes = require('./routes/teacher');
 const studentRoutes = require('./routes/student');
+const pool = require('./db');
 
 const app = express();
 // Render provides this PORT, or we use 3001 for local testing
@@ -23,6 +24,24 @@ app.use('/api/student', studentRoutes);
 // Test route
 app.get('/', (req, res) => {
     res.send('Smart Attendance Backend is running!');
+});
+
+// Debug route to test database connection
+app.get('/api/debug/db-status', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT NOW()');
+        res.json({ 
+            status: 'success', 
+            message: 'Database connected!',
+            timestamp: result.rows[0]
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            status: 'error', 
+            message: error.message,
+            code: error.code
+        });
+    }
 });
 
 app.listen(PORT, () => {
