@@ -5,10 +5,13 @@ const { Pool } = require('pg');
 let pool;
 
 // Prefer an explicit URL (DATABASE_URL or SUPABASE_DB_URL)
-const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
+const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || 'postgresql://postgres:Shubham!450@db.heegldqwbtywjzmwmqra.supabase.co:5432/postgres';
 
 if (dbUrl) {
     console.log("Connecting to PostgreSQL via connection URL...");
+    console.log("DATABASE_URL is set:", !!process.env.DATABASE_URL);
+    console.log("Connection string host:", dbUrl.split('@')[1]?.split(':')[0] || 'unknown');
+    
     const config = { connectionString: dbUrl };
 
     // Enable relaxed SSL for hosted providers (Render / Supabase) or when in production
