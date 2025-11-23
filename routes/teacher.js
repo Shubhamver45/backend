@@ -3,16 +3,18 @@ const express = require('express');
 const pool = require('../db');
 const router = express.Router();
 
-// --- Create a new lecture (THIS IS THE FIX) ---
+// Create a new lecture
 router.post('/lectures', async (req, res) => {
-    // We now receive subject, date, and time from the form
     const { subject, date, time, teacher_id } = req.body;
     
-    // We auto-generate the 'name' field as required by the database
+    // Validation
+    if (!subject || !date || !time || !teacher_id) {
+        return res.status(400).json({ error: 'All fields are required' });
+    }
+    
     const name = `${subject} - ${date}`; 
 
     try {
-        // CORRECTED: The query now inserts the new 'date' field and the auto-generated 'name'
         const query = 'INSERT INTO lectures (name, subject, date, time, teacher_id) VALUES ($1, $2, $3, $4, $5) RETURNING id';
         const values = [name, subject, date, time, teacher_id];
         
@@ -24,18 +26,21 @@ router.post('/lectures', async (req, res) => {
         res.status(201).json({ 
             id: newLectureId, 
             qrUrl: qrUrl,
-            name, subject, time, teacher_id
+            name, subject, date, time, teacher_id
         });
     } catch (error) {
-        console.error("Error creating lecture:", error);
-        res.status(500).json({ error: 'Server error while creating lecture' });
+        console.error('❌ Error creating lecture:', error.message);
+        res.status(500).json({ error: 'Failed to create lecture' });
     }
 });
 
-// --- Get all lectures for a specific teacher ---
+// Get all lectures for a teacher
 router.get('/lectures/:teacherId', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM lectures WHERE teacher_id = $1 ORDER BY created_at DESC', [req.params.teacherId]);
+        const result = await pool.query(
+            'SELECT * FROM lectures WHERE teacher_id = $1 ORDER BY created_at DESC', 
+            [req.params.teacherId]
+        );
         
         const lecturesWithQrUrls = result.rows.map(lecture => ({
             ...lecture,
@@ -44,12 +49,12 @@ router.get('/lectures/:teacherId', async (req, res) => {
 
         res.json(lecturesWithQrUrls);
     } catch (error) {
-        console.error("Error fetching teacher lectures:", error);
-        res.status(500).json({ error: 'Server error' });
+        console.error('❌ Error fetching lectures:', error.message);
+        res.status(500).json({ error: 'Failed to fetch lectures' });
     }
 });
 
-// --- Get Defaulter Report (< 75%) ---
+// Get defaulter report (students with <75% attendance)
 router.get('/reports/defaulters/:teacherId', async (req, res) => {
     try {
         const totalLecturesResult = await pool.query('SELECT COUNT(id) as total FROM lectures WHERE teacher_id = $1', [req.params.teacherId]);
@@ -70,15 +75,17 @@ router.get('/reports/defaulters/:teacherId', async (req, res) => {
             percentage: (student.attended_count / totalLectures) * 100
         })).filter(student => student.percentage < 75);
 
-        if(defaulters.length > 0) console.log("Simulating email to mentors...");
+        if (defaulters.length > 0) {
+            console.log(`📧 ${defaulters.length} defaulters identified`);
+        }
         res.json(defaulters);
     } catch (error) {
-        console.error("Error fetching defaulter report:", error);
-        res.status(500).json({ error: 'Server error' });
+        console.error('❌ Error fetching defaulter report:', error.message);
+        res.status(500).json({ error: 'Failed to fetch report' });
     }
 });
 
-// --- GET live attendance records for an active lecture ---
+// Get live attendance records for a lecture
 router.get('/lectures/:lectureId/attendance', async (req, res) => {
     try {
         const query = `
@@ -91,12 +98,12 @@ router.get('/lectures/:lectureId/attendance', async (req, res) => {
         const result = await pool.query(query, [req.params.lectureId]);
         res.json(result.rows);
     } catch (error) {
-        console.error("Error fetching live attendance:", error);
-        res.status(500).json({ error: 'Server error' });
+        console.error('❌ Error fetching attendance:', error.message);
+        res.status(500).json({ error: 'Failed to fetch attendance' });
     }
 });
 
-// --- GET Day-Wise Report for a single lecture ---
+// Get attendance report for a specific lecture
 router.get('/lecture-report/:lectureId', async (req, res) => {
     try {
         const query = `
@@ -109,8 +116,8 @@ router.get('/lecture-report/:lectureId', async (req, res) => {
         const result = await pool.query(query, [req.params.lectureId]);
         res.json(result.rows);
     } catch (error) {
-        console.error("Error fetching lecture report:", error);
-        res.status(500).json({ error: 'Server error' });
+        console.error('❌ Error fetching lecture report:', error.message);
+        res.status(500).json({ error: 'Failed to fetch report' });
     }
 });
 

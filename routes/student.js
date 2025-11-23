@@ -1,12 +1,16 @@
 // backend/routes/student.js
 const express = require('express');
-// THIS IS THE FIX: It now correctly imports your PostgreSQL database pool
 const pool = require('../db');
 const router = express.Router();
 
-// --- Mark Attendance (Geo-fencing REMOVED) ---
+// Mark attendance for a lecture
 router.post('/mark-attendance', async (req, res) => {
-    const { lectureId, studentId } = req.body; 
+    const { lectureId, studentId } = req.body;
+    
+    // Validation
+    if (!lectureId || !studentId) {
+        return res.status(400).json({ error: 'Lecture ID and Student ID are required' });
+    } 
 
     try {
         const existingCheck = await pool.query(
@@ -24,17 +28,17 @@ router.post('/mark-attendance', async (req, res) => {
         );
         
         res.status(201).json({ 
-            message: 'Attendance marked successfully!',
+            message: 'Attendance marked successfully',
             newRecordId: result.rows[0].id 
         });
 
     } catch (error) {
-        console.error("Error in /mark-attendance:", error);
-        res.status(500).json({ error: 'Server error while marking attendance.' });
+        console.error('❌ Error marking attendance:', error.message);
+        res.status(500).json({ error: 'Failed to mark attendance' });
     }
 });
 
-// --- GET All Lectures for a Student ---
+// Get all available lectures
 router.get('/lectures', async (req, res) => {
     try {
         const query = `
@@ -47,12 +51,12 @@ router.get('/lectures', async (req, res) => {
         const result = await pool.query(query);
         res.json(result.rows);
     } catch (error) {
-        console.error("Error fetching lectures for student:", error);
-        res.status(500).json({ error: 'Server error' });
+        console.error('❌ Error fetching lectures:', error.message);
+        res.status(500).json({ error: 'Failed to fetch lectures' });
     }
 });
 
-// --- GET a specific student's attendance history ---
+// Get student's attendance history
 router.get('/attendance/:studentId', async (req, res) => {
     try {
         const { studentId } = req.params;
@@ -62,8 +66,8 @@ router.get('/attendance/:studentId', async (req, res) => {
         );
         res.json(result.rows);
     } catch (error) {
-        console.error("Error fetching attendance history:", error);
-        res.status(500).json({ error: 'Server error' });
+        console.error('❌ Error fetching attendance history:', error.message);
+        res.status(500).json({ error: 'Failed to fetch attendance' });
     }
 });
 

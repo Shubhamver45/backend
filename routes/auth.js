@@ -2,13 +2,18 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-// THIS IS THE FIX: It now correctly imports your PostgreSQL database pool
 const pool = require('../db');
 const router = express.Router();
 
-// --- User Registration (PostgreSQL syntax) ---
+// User Registration
 router.post('/register', async (req, res) => {
     const { id, name, email, password, role, roll_number, enrollment_number } = req.body;
+    
+    // Validation
+    if (!id || !name || !email || !password || !role) {
+        return res.status(400).json({ error: 'All fields are required' });
+    }
+    
     try {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
@@ -21,46 +26,57 @@ router.post('/register', async (req, res) => {
         res.status(201).json({ message: 'User registered successfully!' });
 
     } catch (error) {
-        console.error('Registration Error:', error);
-        if (error.code === '23505') { // PostgreSQL unique violation
-            return res.status(409).json({ error: 'Email or ID already exists.' });
+        console.error('❌ Registration Error:', error.message);
+        if (error.code === '23505') {
+            return res.status(409).json({ error: 'Email or ID already exists' });
         }
-        res.status(500).json({ error: 'Server error during registration.' });
+        res.status(500).json({ error: 'Registration failed' });
     }
 });
 
-// --- Role-Specific Login Logic (Helper Function) ---
+// Role-specific login handler
 const handleLogin = async (req, res, expectedRole) => {
     const { email, password } = req.body;
+    
+    // Validation
+    if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password are required' });
+    }
+    
     try {
         const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
         const user = result.rows[0];
 
         if (!user) {
-            return res.status(401).json({ error: 'Invalid credentials.' });
+            return res.status(401).json({ error: 'Invalid credentials' });
         }
         
         if (user.role !== expectedRole) {
-            return res.status(403).json({ error: `Access denied. Please use the '${user.role}' login portal.` });
+            return res.status(403).json({ error: `Access denied. Please use the ${user.role} login` });
         }
 
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid credentials.' });
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        if (!process.env.JWT_SECRET) {
+            console.error('❌ JWT_SECRET not configured');
+            return res.status(500).json({ error: 'Server configuration error' });
         }
 
         const payload = { user: { id: user.id, role: user.role, name: user.name } };
-        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '24h' });
 
         res.json({ token, user: payload.user });
 
     } catch (error) {
-        console.error(`Login Error for ${expectedRole}:`, error);
-        res.status(500).json({ error: 'Server error during login.' });
+        console.error(`❌ ${expectedRole} login error:`, error.message);
+        res.status(500).json({ error: 'Login failed' });
     }
 };
 
-// --- Separate Login Routes ---
+// Login routes
 router.post('/teacher/login', (req, res) => handleLogin(req, res, 'teacher'));
 router.post('/student/login', (req, res) => handleLogin(req, res, 'student'));
 

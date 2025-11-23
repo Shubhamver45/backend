@@ -1,7 +1,7 @@
 // backend/server.js
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors'); // We need CORS
+const cors = require('cors');
 
 const authRoutes = require('./routes/auth');
 const teacherRoutes = require('./routes/teacher');
@@ -9,41 +9,68 @@ const studentRoutes = require('./routes/student');
 const pool = require('./db');
 
 const app = express();
-// Render provides this PORT, or we use 3001 for local testing
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors()); // Allow requests from your Netlify frontend
-app.use(express.json()); // Allow server to accept JSON data
+app.use(cors({
+    origin: process.env.FRONTEND_URL || '*',
+    credentials: true
+}));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/teacher', teacherRoutes);
 app.use('/api/student', studentRoutes);
 
-// Test route
+// Health check route
 app.get('/', (req, res) => {
-    res.send('Smart Attendance Backend is running!');
+    res.json({ 
+        status: 'online',
+        service: 'Smart Attendance Backend',
+        version: '1.0.0',
+        timestamp: new Date().toISOString()
+    });
 });
 
-// Debug route to test database connection
-app.get('/api/debug/db-status', async (req, res) => {
+// Database health check
+app.get('/api/health', async (req, res) => {
     try {
-        const result = await pool.query('SELECT NOW()');
+        const result = await pool.query('SELECT NOW() as time, COUNT(*) as users FROM users');
         res.json({ 
-            status: 'success', 
-            message: 'Database connected!',
-            timestamp: result.rows[0]
+            status: 'healthy', 
+            database: 'connected',
+            timestamp: result.rows[0].time,
+            users: result.rows[0].users
         });
     } catch (error) {
-        res.status(500).json({ 
-            status: 'error', 
-            message: error.message,
-            code: error.code
+        res.status(503).json({ 
+            status: 'unhealthy', 
+            database: 'disconnected',
+            error: error.message
         });
     }
 });
 
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({ error: 'Route not found' });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+    console.error('❌ Error:', err);
+    res.status(500).json({ 
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+});
+
 app.listen(PORT, () => {
-    console.log(`Server is listening on port ${PORT}`);
+    console.log('🚀 Server started successfully');
+    console.log(`📡 Listening on port ${PORT}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔗 Frontend URL: ${process.env.FRONTEND_URL || 'not set'}`);
+    console.log('\n✨ Ready to accept connections!\n');
 });
