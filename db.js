@@ -5,7 +5,7 @@ const { Pool } = require('pg');
 let pool;
 
 // Prefer an explicit URL (DATABASE_URL or SUPABASE_DB_URL)
-const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || 'postgresql://postgres:Shubham!450@db.heegldqwbtywjzmwmqra.supabase.co:5432/postgres';
+const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || 'postgresql://postgres:Shubham%21450@db.heegldqwbtywjzmwmqra.supabase.co:5432/postgres';
 
 if (dbUrl) {
     console.log("Connecting to PostgreSQL via connection URL...");
