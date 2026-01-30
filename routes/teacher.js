@@ -5,28 +5,49 @@ const router = express.Router();
 
 // Create a new lecture
 router.post('/lectures', async (req, res) => {
-    const { subject, date, time, teacher_id } = req.body;
-    
+    const { subject, date, time, teacher_id, latitude, longitude, radius } = req.body;
+
     // Validation
     if (!subject || !date || !time || !teacher_id) {
         return res.status(400).json({ error: 'All fields are required' });
     }
-    
-    const name = `${subject} - ${date}`; 
+
+    const name = `${subject} - ${date}`;
 
     try {
-        const query = 'INSERT INTO lectures (name, subject, date, time, teacher_id) VALUES ($1, $2, $3, $4, $5) RETURNING id';
-        const values = [name, subject, date, time, teacher_id];
-        
+        // Include geofencing fields in the query
+        const query = `
+            INSERT INTO lectures (name, subject, date, time, teacher_id, latitude, longitude, radius) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+            RETURNING id
+        `;
+        const values = [
+            name,
+            subject,
+            date,
+            time,
+            teacher_id,
+            latitude || null,  // Allow null if not provided
+            longitude || null, // Allow null if not provided
+            radius || 100      // Default to 100 meters
+        ];
+
         const result = await pool.query(query, values);
         const newLectureId = result.rows[0].id;
 
         const qrUrl = `${process.env.FRONTEND_URL}/attend?lectureId=${newLectureId}`;
-        
-        res.status(201).json({ 
-            id: newLectureId, 
+
+        res.status(201).json({
+            id: newLectureId,
             qrUrl: qrUrl,
-            name, subject, date, time, teacher_id
+            name,
+            subject,
+            date,
+            time,
+            teacher_id,
+            latitude,
+            longitude,
+            radius: radius || 100
         });
     } catch (error) {
         console.error('❌ Error creating lecture:', error.message);
@@ -38,10 +59,10 @@ router.post('/lectures', async (req, res) => {
 router.get('/lectures/:teacherId', async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT * FROM lectures WHERE teacher_id = $1 ORDER BY created_at DESC', 
+            'SELECT * FROM lectures WHERE teacher_id = $1 ORDER BY created_at DESC',
             [req.params.teacherId]
         );
-        
+
         const lecturesWithQrUrls = result.rows.map(lecture => ({
             ...lecture,
             qrUrl: `${process.env.FRONTEND_URL}/attend?lectureId=${lecture.id}`
@@ -107,7 +128,7 @@ router.get('/lectures/:lectureId/attendance', async (req, res) => {
 router.get('/lecture-report/:lectureId', async (req, res) => {
     try {
         const query = `
-            SELECT u.id, u.roll_number, u.enrollment_number, u.name, a.timestamp
+            SELECT u.id as student_id, u.roll_number, u.enrollment_number, u.name as student_name, a.timestamp
             FROM attendance a
             JOIN users u ON a.student_id = u.id
             WHERE a.lecture_id = $1 AND a.status = 'present'
@@ -118,6 +139,39 @@ router.get('/lecture-report/:lectureId', async (req, res) => {
     } catch (error) {
         console.error('❌ Error fetching lecture report:', error.message);
         res.status(500).json({ error: 'Failed to fetch report' });
+    }
+});
+
+// Get all students (for teacher reports)
+router.get('/all-students', async (req, res) => {
+    try {
+        const query = `
+            SELECT id, name, email, roll_number, enrollment_number, created_at
+            FROM users 
+            WHERE role = 'student'
+            ORDER BY name ASC
+        `;
+        const result = await pool.query(query);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('❌ Error fetching students:', error.message);
+        res.status(500).json({ error: 'Failed to fetch students' });
+    }
+});
+
+// Get all attendance records (for teacher reports)
+router.get('/all-attendance', async (req, res) => {
+    try {
+        const query = `
+            SELECT a.id, a.lecture_id, a.student_id, a.status, a.timestamp
+            FROM attendance a
+            ORDER BY a.timestamp DESC
+        `;
+        const result = await pool.query(query);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('❌ Error fetching attendance records:', error.message);
+        res.status(500).json({ error: 'Failed to fetch attendance records' });
     }
 });
 

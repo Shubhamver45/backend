@@ -8,6 +8,7 @@ REST API backend for the Smart Attendance System built with Node.js, Express, an
 - 👥 Role-based access control (Teacher & Student)
 - 📊 Lecture management
 - ✅ Attendance tracking
+- 📍 **GPS-based geofencing** (NEW)
 - 📈 Attendance reports and analytics
 - 🗄️ PostgreSQL database
 
@@ -74,6 +75,9 @@ CREATE TABLE lectures (
     date DATE NOT NULL,
     time TIME NOT NULL,
     teacher_id VARCHAR(50) REFERENCES users(id),
+    latitude DECIMAL(10, 8),           -- NEW: GPS latitude for geofencing
+    longitude DECIMAL(11, 8),          -- NEW: GPS longitude for geofencing
+    radius INTEGER DEFAULT 100,        -- NEW: Geofence radius in meters
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -89,6 +93,7 @@ CREATE TABLE attendance (
 
 -- Indexes for better performance
 CREATE INDEX idx_lectures_teacher ON lectures(teacher_id);
+CREATE INDEX idx_lectures_geofence ON lectures(latitude, longitude) WHERE latitude IS NOT NULL;
 CREATE INDEX idx_attendance_student ON attendance(student_id);
 CREATE INDEX idx_attendance_lecture ON attendance(lecture_id);
 ```
@@ -157,7 +162,10 @@ Content-Type: application/json
   "subject": "string",
   "date": "YYYY-MM-DD",
   "time": "HH:MM",
-  "teacher_id": "string"
+  "teacher_id": "string",
+  "latitude": "number (optional)",
+  "longitude": "number (optional)",
+  "radius": "number (optional, default: 100)"
 }
 ```
 
@@ -326,8 +334,93 @@ Common status codes:
 See the SQL schema in the installation section above. The database consists of three main tables:
 
 - **users** - Stores teacher and student accounts
-- **lectures** - Stores lecture information
+- **lectures** - Stores lecture information (now includes geofencing data)
 - **attendance** - Stores attendance records
+
+## Geofencing Feature
+
+### Overview
+
+The system now supports GPS-based geofencing to ensure students can only mark attendance when physically present at the lecture location.
+
+### How It Works
+
+1. **Teacher Side**: When creating a lecture, teachers can optionally set:
+   - GPS coordinates (latitude, longitude)
+   - Geofence radius in meters (default: 100m)
+
+2. **Student Side**: When marking attendance, the frontend:
+   - Gets the student's current GPS location
+   - Calculates distance to the lecture location
+   - Only allows attendance if within the geofence radius
+
+3. **Backend**: Stores and returns geofencing data with lectures
+
+### Database Changes
+
+Three new columns added to the `lectures` table:
+- `latitude` (DECIMAL 10,8) - GPS latitude coordinate
+- `longitude` (DECIMAL 11,8) - GPS longitude coordinate  
+- `radius` (INTEGER) - Geofence radius in meters (default: 100)
+
+### Migration
+
+To add geofencing to an existing database:
+
+```sql
+ALTER TABLE lectures 
+ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 8),
+ADD COLUMN IF NOT EXISTS longitude DECIMAL(11, 8),
+ADD COLUMN IF NOT EXISTS radius INTEGER DEFAULT 100;
+
+CREATE INDEX idx_lectures_geofence ON lectures(latitude, longitude) WHERE latitude IS NOT NULL;
+```
+
+Or run the migration file:
+```bash
+psql $DATABASE_URL < migrations/add_geofencing.sql
+```
+
+### API Changes
+
+**Create Lecture** now accepts optional geofencing parameters:
+```json
+{
+  "subject": "Data Structures",
+  "date": "2026-01-30",
+  "time": "10:00",
+  "teacher_id": "T001",
+  "latitude": 28.7041,
+  "longitude": 77.1025,
+  "radius": 100
+}
+```
+
+**Get Lectures** now returns geofencing data:
+```json
+{
+  "id": 1,
+  "name": "Data Structures - 2026-01-30",
+  "subject": "Data Structures",
+  "latitude": 28.7041,
+  "longitude": 77.1025,
+  "radius": 100,
+  ...
+}
+```
+
+### Backward Compatibility
+
+- Geofencing is **optional** - lectures without location data work normally
+- Existing lectures continue to function without modification
+- Frontend handles both geofenced and non-geofenced lectures
+
+### Security Considerations
+
+- Location data is stored but not tracked over time
+- Only lecture locations are stored, not student locations
+- Frontend performs distance calculations
+- GPS accuracy varies (typically 5-50 meters)
 
 ## Contributing
 
