@@ -59,6 +59,7 @@ router.get('/dashboard-stats', async (req, res) => {
 // ─── Get All Users (Teachers + Students) ───────────────────
 router.get('/all-users', async (req, res) => {
     try {
+        // Try selecting specific columns including created_at
         const result = await pool.query(`
             SELECT id, name, email, role, roll_number, enrollment_number, created_at
             FROM users 
@@ -67,8 +68,26 @@ router.get('/all-users', async (req, res) => {
         `);
         res.json(result.rows);
     } catch (error) {
-        console.error('❌ Error fetching users:', error.message);
-        res.status(500).json({ error: 'Failed to fetch users' });
+        console.error('❌ Error fetching users (specific columns):', error.message);
+
+        // Fallback: Select * if specific columns fail (e.g., created_at missing)
+        try {
+            const fallbackVal = await pool.query(`SELECT * FROM users WHERE role != 'admin' ORDER BY role ASC`);
+            // Map to expected format, handling missing fields
+            const mappedUsers = fallbackVal.rows.map(u => ({
+                id: u.id,
+                name: u.name,
+                email: u.email,
+                role: u.role,
+                roll_number: u.roll_number || null,
+                enrollment_number: u.enrollment_number || null,
+                created_at: u.created_at || null // Handle missing created_at
+            }));
+            res.json(mappedUsers);
+        } catch (fallbackError) {
+            console.error('❌ Critical Error fetching users:', fallbackError.message);
+            res.status(500).json({ error: 'Failed to fetch users' });
+        }
     }
 });
 
