@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+.env
+.env.*
+.git
+.gitignore
+.vscode
+.idea
+README.md
+BACKEND_CHANGES.md
+GEOFENCING_SETUP.md
+QUICK_MIGRATION.sql
+coverage
+.nyc_output
+*.md
