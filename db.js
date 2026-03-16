@@ -29,7 +29,8 @@ pool = new Pool(config);
 pool.query('SELECT NOW()', (err, res) => {
     if (err) {
         console.error('❌ Database connection failed:', err.message);
-        process.exit(1);
+        console.error('⚠️  Server will continue — pool will retry connections automatically.');
+        return;
     }
     console.log('✅ Database connected successfully at', res.rows[0].now);
 });

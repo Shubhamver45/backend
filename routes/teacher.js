@@ -146,7 +146,7 @@ router.get('/lecture-report/:lectureId', async (req, res) => {
 router.get('/all-students', async (req, res) => {
     try {
         const query = `
-            SELECT id, name, email, roll_number, enrollment_number, created_at
+            SELECT id, name, email, roll_number, enrollment_number
             FROM users 
             WHERE role = 'student'
             ORDER BY name ASC
