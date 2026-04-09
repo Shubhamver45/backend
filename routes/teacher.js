@@ -1,4 +1,4 @@
-﻿// backend/routes/teacher.js
+// backend/routes/teacher.js
 const express = require('express');
 const pool = require('../db');
 const router = express.Router();
@@ -180,11 +180,11 @@ router.get('/all-attendance', async (req, res) => {
 router.get('/reports/cumulative/:teacherId', async (req, res) => {
     try {
         const { teacherId } = req.params;
-        const studentsResult = await pool.query('SELECT id, name, roll_number, enrollment_number FROM users WHERE role =  ORDER BY roll_number ASC, name ASC', ['student']);
+        const studentsResult = await pool.query('SELECT id, name, roll_number, enrollment_number FROM users WHERE role = $1 ORDER BY roll_number ASC, name ASC', ['student']);
         const students = studentsResult.rows;
-        const lecturesResult = await pool.query('SELECT id, name, subject, date FROM lectures WHERE teacher_id =  ORDER BY date ASC, id ASC', [teacherId]);
+        const lecturesResult = await pool.query('SELECT id, name, subject, date FROM lectures WHERE teacher_id = $1 ORDER BY date ASC, id ASC', [teacherId]);
         const lectures = lecturesResult.rows;
-        const attendanceResult = await pool.query('SELECT student_id, lecture_id FROM attendance WHERE lecture_id IN (SELECT id FROM lectures WHERE teacher_id = )', [teacherId]);
+        const attendanceResult = await pool.query('SELECT student_id, lecture_id FROM attendance WHERE lecture_id IN (SELECT id FROM lectures WHERE teacher_id = $1)', [teacherId]);
         const records = attendanceResult.rows;
         res.json({ students, lectures, records });
     } catch (error) {
