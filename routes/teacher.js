@@ -1,4 +1,4 @@
-// backend/routes/teacher.js
+﻿// backend/routes/teacher.js
 const express = require('express');
 const pool = require('../db');
 const router = express.Router();
@@ -50,7 +50,7 @@ router.post('/lectures', async (req, res) => {
             radius: radius || 100
         });
     } catch (error) {
-        console.error('âŒ Error creating lecture:', error.message);
+        console.error('Ã¢ÂÅ’ Error creating lecture:', error.message);
         res.status(500).json({ error: 'Failed to create lecture' });
     }
 });
@@ -70,7 +70,7 @@ router.get('/lectures/:teacherId', async (req, res) => {
 
         res.json(lecturesWithQrUrls);
     } catch (error) {
-        console.error('âŒ Error fetching lectures:', error.message);
+        console.error('Ã¢ÂÅ’ Error fetching lectures:', error.message);
         res.status(500).json({ error: 'Failed to fetch lectures' });
     }
 });
@@ -97,11 +97,11 @@ router.get('/reports/defaulters/:teacherId', async (req, res) => {
         })).filter(student => student.percentage < 75);
 
         if (defaulters.length > 0) {
-            console.log(`ðŸ“§ ${defaulters.length} defaulters identified`);
+            console.log(`Ã°Å¸â€œÂ§ ${defaulters.length} defaulters identified`);
         }
         res.json(defaulters);
     } catch (error) {
-        console.error('âŒ Error fetching defaulter report:', error.message);
+        console.error('Ã¢ÂÅ’ Error fetching defaulter report:', error.message);
         res.status(500).json({ error: 'Failed to fetch report' });
     }
 });
@@ -119,7 +119,7 @@ router.get('/lectures/:lectureId/attendance', async (req, res) => {
         const result = await pool.query(query, [req.params.lectureId]);
         res.json(result.rows);
     } catch (error) {
-        console.error('âŒ Error fetching attendance:', error.message);
+        console.error('Ã¢ÂÅ’ Error fetching attendance:', error.message);
         res.status(500).json({ error: 'Failed to fetch attendance' });
     }
 });
@@ -129,15 +129,15 @@ router.get('/lecture-report/:lectureId', async (req, res) => {
     try {
         const query = `
             SELECT u.id as student_id, u.roll_number, u.enrollment_number, u.name as student_name, a.timestamp
-            FROM attendance a
-            JOIN users u ON a.student_id = u.id
-            WHERE a.lecture_id = $1 AND a.status = 'present'
-            ORDER BY u.roll_number ASC
+            FROM users u
+            LEFT JOIN attendance a ON u.id = a.student_id AND a.lecture_id = $1 AND a.status = 'present'
+            WHERE u.role = 'student'
+            ORDER BY u.roll_number ASC, u.name ASC
         `;
         const result = await pool.query(query, [req.params.lectureId]);
         res.json(result.rows);
     } catch (error) {
-        console.error('âŒ Error fetching lecture report:', error.message);
+        console.error('Ã¢ÂÅ’ Error fetching lecture report:', error.message);
         res.status(500).json({ error: 'Failed to fetch report' });
     }
 });
@@ -154,7 +154,7 @@ router.get('/all-students', async (req, res) => {
         const result = await pool.query(query);
         res.json(result.rows);
     } catch (error) {
-        console.error('âŒ Error fetching students:', error.message);
+        console.error('Ã¢ÂÅ’ Error fetching students:', error.message);
         res.status(500).json({ error: 'Failed to fetch students' });
     }
 });
@@ -170,7 +170,7 @@ router.get('/all-attendance', async (req, res) => {
         const result = await pool.query(query);
         res.json(result.rows);
     } catch (error) {
-        console.error('âŒ Error fetching attendance records:', error.message);
+        console.error('Ã¢ÂÅ’ Error fetching attendance records:', error.message);
         res.status(500).json({ error: 'Failed to fetch attendance records' });
     }
 });
@@ -193,3 +193,4 @@ router.get('/reports/cumulative/:teacherId', async (req, res) => {
     }
 });
 module.exports = router;
+
