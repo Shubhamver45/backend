@@ -176,62 +176,140 @@ router.get('/all-attendance', async (req, res) => {
 });
 
 
-// Get cumulative report for a teacher (ALL TIME)
+// Get cumulative report for a teacher (ALL TIME - active + archived)
 router.get('/reports/cumulative/:teacherId', async (req, res) => {
     try {
         const { teacherId } = req.params;
-        const studentsResult = await pool.query('SELECT id, name, roll_number, enrollment_number FROM users WHERE role = $1 ORDER BY roll_number ASC, name ASC', ['student']);
-        const students = studentsResult.rows;
-        const lecturesResult = await pool.query('SELECT id, name, subject, date FROM lectures WHERE teacher_id = $1 ORDER BY date ASC, id ASC', [teacherId]);
-        const lectures = lecturesResult.rows;
-        const attendanceResult = await pool.query('SELECT student_id, lecture_id FROM attendance WHERE lecture_id IN (SELECT id FROM lectures WHERE teacher_id = $1)', [teacherId]);
-        const records = attendanceResult.rows;
-        res.json({ students, lectures, records });
-    } catch (error) {
-        console.error('Error fetching cumulative report:', error.message);
-        res.status(500).json({ error: 'Failed to fetch cumulative report' });
-    }
-});
 
-// Get month-wise cumulative report for a teacher
-router.get('/reports/monthly/:teacherId', async (req, res) => {
-    try {
-        const { teacherId } = req.params;
-        const { month, year } = req.query; // month=1-12, year=2024
-
+        // All students
         const studentsResult = await pool.query(
             'SELECT id, name, roll_number, enrollment_number FROM users WHERE role = $1 ORDER BY roll_number ASC, name ASC',
             ['student']
         );
         const students = studentsResult.rows;
 
-        // Filter lectures by month and year
-        let lecturesQuery = 'SELECT id, name, subject, date FROM lectures WHERE teacher_id = $1';
-        const queryParams = [teacherId];
+        // Active lectures for this teacher
+        const activeLecturesResult = await pool.query(
+            'SELECT id, name, subject, date FROM lectures WHERE teacher_id = $1 ORDER BY date ASC, id ASC',
+            [teacherId]
+        );
+
+        // Archived lectures for this teacher
+        let archivedLectures = [];
+        try {
+            const archivedResult = await pool.query(
+                'SELECT original_lecture_id AS id, name, subject, date FROM archived_lectures WHERE teacher_id = $1 ORDER BY date ASC, original_lecture_id ASC',
+                [teacherId]
+            );
+            archivedLectures = archivedResult.rows;
+        } catch (e) { /* archived table may not exist yet */ }
+
+        // Merge and deduplicate (active takes priority)
+        const activeIds = new Set(activeLecturesResult.rows.map(l => String(l.id)));
+        const allLectures = [
+            ...activeLecturesResult.rows,
+            ...archivedLectures.filter(l => !activeIds.has(String(l.id)))
+        ].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        // Active attendance records
+        const activeAttendanceResult = await pool.query(
+            'SELECT student_id, lecture_id FROM attendance WHERE lecture_id IN (SELECT id FROM lectures WHERE teacher_id = $1)',
+            [teacherId]
+        );
+
+        // Archived attendance records
+        let archivedAttendance = [];
+        try {
+            const archivedAttResult = await pool.query(
+                'SELECT student_id, lecture_id FROM archived_attendance WHERE lecture_id IN (SELECT original_lecture_id FROM archived_lectures WHERE teacher_id = $1)',
+                [teacherId]
+            );
+            archivedAttendance = archivedAttResult.rows;
+        } catch (e) { /* archived table may not exist yet */ }
+
+        const records = [...activeAttendanceResult.rows, ...archivedAttendance];
+
+        res.json({ students, lectures: allLectures, records });
+    } catch (error) {
+        console.error('Error fetching cumulative report:', error.message);
+        res.status(500).json({ error: 'Failed to fetch cumulative report' });
+    }
+});
+
+// Get month-wise cumulative report for a teacher (active + archived)
+router.get('/reports/monthly/:teacherId', async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+        const { month, year } = req.query;
+
+        // All students
+        const studentsResult = await pool.query(
+            'SELECT id, name, roll_number, enrollment_number FROM users WHERE role = $1 ORDER BY roll_number ASC, name ASC',
+            ['student']
+        );
+        const students = studentsResult.rows;
+
+        // Build month/year filter
+        let monthFilter = '';
+        const activeParams = [teacherId];
+        const archivedParams = [teacherId];
 
         if (month && year) {
-            lecturesQuery += ` AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3`;
-            queryParams.push(parseInt(month), parseInt(year));
+            monthFilter = ` AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3`;
+            activeParams.push(parseInt(month), parseInt(year));
+            archivedParams.push(parseInt(month), parseInt(year));
         } else if (year) {
-            lecturesQuery += ` AND EXTRACT(YEAR FROM date) = $2`;
-            queryParams.push(parseInt(year));
+            monthFilter = ` AND EXTRACT(YEAR FROM date) = $2`;
+            activeParams.push(parseInt(year));
+            archivedParams.push(parseInt(year));
         }
-        lecturesQuery += ' ORDER BY date ASC, id ASC';
 
-        const lecturesResult = await pool.query(lecturesQuery, queryParams);
-        const lectures = lecturesResult.rows;
+        // Active lectures filtered by month/year
+        const activeLecturesResult = await pool.query(
+            `SELECT id, name, subject, date FROM lectures WHERE teacher_id = $1${monthFilter} ORDER BY date ASC, id ASC`,
+            activeParams
+        );
 
-        const lectureIds = lectures.map(l => l.id);
-        let records = [];
-        if (lectureIds.length > 0) {
-            const attendanceResult = await pool.query(
-                'SELECT student_id, lecture_id FROM attendance WHERE lecture_id = ANY($1)',
-                [lectureIds]
+        // Archived lectures filtered by month/year
+        let archivedLectures = [];
+        try {
+            const archivedResult = await pool.query(
+                `SELECT original_lecture_id AS id, name, subject, date FROM archived_lectures WHERE teacher_id = $1${monthFilter} ORDER BY date ASC, original_lecture_id ASC`,
+                archivedParams
             );
-            records = attendanceResult.rows;
+            archivedLectures = archivedResult.rows;
+        } catch (e) { /* archived table may not exist */ }
+
+        // Merge and deduplicate
+        const activeIds = new Set(activeLecturesResult.rows.map(l => String(l.id)));
+        const allLectures = [
+            ...activeLecturesResult.rows,
+            ...archivedLectures.filter(l => !activeIds.has(String(l.id)))
+        ].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        // Attendance records for these lectures
+        const allLectureIds = allLectures.map(l => l.id);
+        let records = [];
+
+        if (allLectureIds.length > 0) {
+            // Active attendance
+            const activeAttResult = await pool.query(
+                'SELECT student_id, lecture_id FROM attendance WHERE lecture_id = ANY($1)',
+                [allLectureIds]
+            );
+            records = activeAttResult.rows;
+
+            // Archived attendance
+            try {
+                const archivedAttResult = await pool.query(
+                    'SELECT student_id, lecture_id FROM archived_attendance WHERE lecture_id = ANY($1)',
+                    [allLectureIds]
+                );
+                records = [...records, ...archivedAttResult.rows];
+            } catch (e) { /* archived table may not exist */ }
         }
 
-        res.json({ students, lectures, records, month, year });
+        res.json({ students, lectures: allLectures, records, month, year });
     } catch (error) {
         console.error('Error fetching monthly report:', error.message);
         res.status(500).json({ error: 'Failed to fetch monthly report' });
