@@ -71,4 +71,37 @@ router.get('/attendance/:studentId', async (req, res) => {
     }
 });
 
+// Get student profile
+router.get('/profile/:studentId', async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const result = await pool.query(
+            'SELECT id, name, email, roll_number, enrollment_number, subject_teacher_email, parents_email, mentor_email FROM users WHERE id = $1',
+            [studentId]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('❌ Error fetching profile:', error.message);
+        res.status(500).json({ error: 'Failed to fetch profile' });
+    }
+});
+
+// Update student profile
+router.put('/profile/:studentId', async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const { subject_teacher_email, parents_email, mentor_email } = req.body;
+        
+        await pool.query(
+            'UPDATE users SET subject_teacher_email = $1, parents_email = $2, mentor_email = $3 WHERE id = $4',
+            [subject_teacher_email, parents_email, mentor_email, studentId]
+        );
+        res.json({ message: 'Profile updated successfully' });
+    } catch (error) {
+        console.error('❌ Error updating profile:', error.message);
+        res.status(500).json({ error: 'Failed to update profile' });
+    }
+});
+
 module.exports = router;

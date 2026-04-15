@@ -7,7 +7,7 @@ const router = express.Router();
 
 // User Registration
 router.post('/register', async (req, res) => {
-    const { id, name, email, password, role, roll_number, enrollment_number } = req.body;
+    const { id, name, email, password, role, roll_number, enrollment_number, subject_teacher_email, parents_email, mentor_email } = req.body;
 
     // Validation
     if (!id || !name || !email || !password || !role) {
@@ -18,8 +18,8 @@ router.post('/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        const query = 'INSERT INTO users (id, name, email, password, role, roll_number, enrollment_number) VALUES ($1, $2, $3, $4, $5, $6, $7)';
-        const values = [id, name, email, hashedPassword, role, roll_number || null, enrollment_number || null];
+        const query = 'INSERT INTO users (id, name, email, password, role, roll_number, enrollment_number, subject_teacher_email, parents_email, mentor_email) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)';
+        const values = [id, name, email, hashedPassword, role, roll_number || null, enrollment_number || null, subject_teacher_email || null, parents_email || null, mentor_email || null];
 
         await pool.query(query, values);
 
