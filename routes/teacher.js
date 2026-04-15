@@ -1,6 +1,7 @@
 // backend/routes/teacher.js
 const express = require('express');
 const pool = require('../db');
+const { sendDeficiencyEmail } = require('../utils/mailer');
 const router = express.Router();
 
 // Create a new lecture
@@ -120,6 +121,70 @@ router.get('/reports/defaulters/:teacherId', async (req, res) => {
     } catch (error) {
         console.error('❌ Error fetching defaulter report:', error.message);
         res.status(500).json({ error: 'Failed to fetch report' });
+    }
+});
+
+// Send deficiency alerts (Manual Trigger)
+router.post('/reports/send-alerts/:teacherId', async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+
+        // 1. Identify defaulters (Same logic as above)
+        const totalLecturesResult = await pool.query(`
+            SELECT 
+                (SELECT COUNT(id) FROM lectures WHERE teacher_id = $1) + 
+                (SELECT COUNT(id) FROM archived_lectures WHERE teacher_id = $1) as total
+        `, [teacherId]);
+        const totalLectures = parseInt(totalLecturesResult.rows[0].total || 0);
+
+        if (totalLectures === 0) return res.status(400).json({ error: 'No lectures found for this teacher.' });
+
+        const attendanceCountsResult = await pool.query(`
+            WITH deduplicated_students AS (
+                SELECT DISTINCT ON (roll_number) id, name, roll_number, enrollment_number, subject_teacher_email, parents_email, mentor_email
+                FROM users 
+                WHERE role = 'student'
+                ORDER BY roll_number, created_at DESC
+            )
+            SELECT ds.*, COUNT(combined_att.lecture_id) as attended_count
+            FROM deduplicated_students ds
+            LEFT JOIN (
+                SELECT student_id, lecture_id FROM attendance WHERE lecture_id IN (SELECT id FROM lectures WHERE teacher_id = $1)
+                UNION ALL
+                SELECT student_id, lecture_id FROM archived_attendance WHERE lecture_id IN (SELECT original_lecture_id FROM archived_lectures WHERE teacher_id = $1)
+            ) combined_att ON ds.id = combined_att.student_id
+            GROUP BY ds.id, ds.name, ds.roll_number, ds.enrollment_number, ds.subject_teacher_email, ds.parents_email, ds.mentor_email
+        `, [teacherId]);
+
+        const defaulters = attendanceCountsResult.rows.map(student => ({
+            ...student,
+            attended_count: parseInt(student.attended_count),
+            percentage: (parseInt(student.attended_count) / totalLectures) * 100
+        })).filter(student => student.percentage < 75);
+
+        if (defaulters.length === 0) {
+            return res.json({ message: 'No students found with attendance below 75%.' });
+        }
+
+        // 2. Loop through and send emails
+        let sentCount = 0;
+        for (const student of defaulters) {
+            const contacts = {
+                parents_email: student.parents_email,
+                mentor_email: student.mentor_email,
+                subject_teacher_email: student.subject_teacher_email
+            };
+            
+            // Send asynchronously (don't block the loop completely if one fails)
+            sendDeficiencyEmail(student, contacts, student.percentage);
+            sentCount++;
+        }
+
+        res.json({ message: `Success: Alerts initiated for ${sentCount} students.` });
+
+    } catch (error) {
+        console.error('❌ Error sending alerts:', error.message);
+        res.status(500).json({ error: 'Failed to send alerts' });
     }
 });
 
