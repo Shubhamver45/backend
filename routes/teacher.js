@@ -1,4 +1,4 @@
-﻿// backend/routes/teacher.js
+// backend/routes/teacher.js
 const express = require('express');
 const pool = require('../db');
 const router = express.Router();
@@ -176,7 +176,7 @@ router.get('/all-attendance', async (req, res) => {
 });
 
 
-// Get cumulative report for a teacher
+// Get cumulative report for a teacher (ALL TIME)
 router.get('/reports/cumulative/:teacherId', async (req, res) => {
     try {
         const { teacherId } = req.params;
@@ -192,5 +192,51 @@ router.get('/reports/cumulative/:teacherId', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch cumulative report' });
     }
 });
+
+// Get month-wise cumulative report for a teacher
+router.get('/reports/monthly/:teacherId', async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+        const { month, year } = req.query; // month=1-12, year=2024
+
+        const studentsResult = await pool.query(
+            'SELECT id, name, roll_number, enrollment_number FROM users WHERE role = $1 ORDER BY roll_number ASC, name ASC',
+            ['student']
+        );
+        const students = studentsResult.rows;
+
+        // Filter lectures by month and year
+        let lecturesQuery = 'SELECT id, name, subject, date FROM lectures WHERE teacher_id = $1';
+        const queryParams = [teacherId];
+
+        if (month && year) {
+            lecturesQuery += ` AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3`;
+            queryParams.push(parseInt(month), parseInt(year));
+        } else if (year) {
+            lecturesQuery += ` AND EXTRACT(YEAR FROM date) = $2`;
+            queryParams.push(parseInt(year));
+        }
+        lecturesQuery += ' ORDER BY date ASC, id ASC';
+
+        const lecturesResult = await pool.query(lecturesQuery, queryParams);
+        const lectures = lecturesResult.rows;
+
+        const lectureIds = lectures.map(l => l.id);
+        let records = [];
+        if (lectureIds.length > 0) {
+            const attendanceResult = await pool.query(
+                'SELECT student_id, lecture_id FROM attendance WHERE lecture_id = ANY($1)',
+                [lectureIds]
+            );
+            records = attendanceResult.rows;
+        }
+
+        res.json({ students, lectures, records, month, year });
+    } catch (error) {
+        console.error('Error fetching monthly report:', error.message);
+        res.status(500).json({ error: 'Failed to fetch monthly report' });
+    }
+});
+
 module.exports = router;
 
