@@ -75,38 +75,54 @@ router.get('/lectures/:teacherId', async (req, res) => {
     }
 });
 
-// Get defaulter report (students with <75% attendance)
+// Get defaulter report (students with <75% attendance) - Active + Archived
 router.get('/reports/defaulters/:teacherId', async (req, res) => {
     try {
-        const totalLecturesResult = await pool.query('SELECT COUNT(id) as total FROM lectures WHERE teacher_id = $1', [req.params.teacherId]);
-        const totalLectures = totalLecturesResult.rows[0].total;
+        const { teacherId } = req.params;
+
+        // Count total lectures (Active + Archived)
+        const totalLecturesResult = await pool.query(`
+            SELECT 
+                (SELECT COUNT(id) FROM lectures WHERE teacher_id = $1) + 
+                (SELECT COUNT(id) FROM archived_lectures WHERE teacher_id = $1) as total
+        `, [teacherId]);
+        const totalLectures = parseInt(totalLecturesResult.rows[0].total || 0);
 
         if (totalLectures === 0) return res.json([]);
 
+        // Get student attendance counts across both Active and Archived tables
+        // Uses DISTINCT ON to deduplicate students by roll_number (if multiple accounts exist)
         const attendanceCountsResult = await pool.query(`
-            SELECT u.id, u.name, u.roll_number, u.enrollment_number, COUNT(a.id) as attended_count
-            FROM users u
-            LEFT JOIN attendance a ON u.id = a.student_id
-            WHERE u.role = 'student' AND a.lecture_id IN (SELECT id FROM lectures WHERE teacher_id = $1)
-            GROUP BY u.id, u.name, u.roll_number, u.enrollment_number
-        `, [req.params.teacherId]);
+            WITH deduplicated_students AS (
+                SELECT DISTINCT ON (roll_number) id, name, roll_number, enrollment_number
+                FROM users 
+                WHERE role = 'student'
+                ORDER BY roll_number, created_at DESC
+            )
+            SELECT ds.id, ds.name, ds.roll_number, ds.enrollment_number, COUNT(combined_att.lecture_id) as attended_count
+            FROM deduplicated_students ds
+            LEFT JOIN (
+                SELECT student_id, lecture_id FROM attendance WHERE lecture_id IN (SELECT id FROM lectures WHERE teacher_id = $1)
+                UNION ALL
+                SELECT student_id, lecture_id FROM archived_attendance WHERE lecture_id IN (SELECT original_lecture_id FROM archived_lectures WHERE teacher_id = $1)
+            ) combined_att ON ds.id = combined_att.student_id
+            GROUP BY ds.id, ds.name, ds.roll_number, ds.enrollment_number
+        `, [teacherId]);
 
         const defaulters = attendanceCountsResult.rows.map(student => ({
             ...student,
-            percentage: (student.attended_count / totalLectures) * 100
+            attended_count: parseInt(student.attended_count),
+            total_lectures: totalLectures,
+            percentage: (parseInt(student.attended_count) / totalLectures) * 100
         })).filter(student => student.percentage < 75);
 
-        if (defaulters.length > 0) {
-            console.log(`Ã°Å¸â€œÂ§ ${defaulters.length} defaulters identified`);
-        }
         res.json(defaulters);
     } catch (error) {
-        console.error('Ã¢ÂÅ’ Error fetching defaulter report:', error.message);
+        console.error('❌ Error fetching defaulter report:', error.message);
         res.status(500).json({ error: 'Failed to fetch report' });
     }
 });
 
-// Get live attendance records for a lecture
 router.get('/lectures/:lectureId/attendance', async (req, res) => {
     try {
         const query = `
