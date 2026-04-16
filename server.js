@@ -33,22 +33,36 @@ cron.schedule('0 0 1 * *', async () => {
             if (total === 0) continue;
 
             const defaultersRes = await pool.query(`
-                WITH deduplicated_students AS (
-                    SELECT DISTINCT ON (COALESCE(NULLIF(TRIM(roll_number), ''), id)) id, name, roll_number, enrollment_number, subject_teacher_email, parents_email, mentor_email
-                    FROM users WHERE role = 'student' ORDER BY COALESCE(NULLIF(TRIM(roll_number), ''), id), created_at DESC
-                )
-                SELECT ds.*, COUNT(combined_att.lecture_id) as attended_count
-                FROM deduplicated_students ds
+                SELECT u.*, COUNT(combined_att.lecture_id) as attended_count
+                FROM users u
                 LEFT JOIN (
                     SELECT student_id, lecture_id FROM attendance WHERE lecture_id IN (SELECT id FROM lectures WHERE teacher_id = $1)
                     UNION ALL
                     SELECT student_id, lecture_id FROM archived_attendance WHERE lecture_id IN (SELECT original_lecture_id FROM archived_lectures WHERE teacher_id = $1)
-                ) combined_att ON ds.id = combined_att.student_id
-                GROUP BY ds.id, ds.name, ds.roll_number, ds.enrollment_number, ds.subject_teacher_email, ds.parents_email, ds.mentor_email
+                ) combined_att ON u.id = combined_att.student_id
+                WHERE u.role = 'student'
+                GROUP BY u.id, u.name, u.roll_number, u.enrollment_number, u.subject_teacher_email, u.parents_email, u.mentor_email, u.created_at, u.email, u.password, u.role
+                ORDER BY u.created_at DESC
             `, [teacher.id]);
 
-            const defaulters = defaultersRes.rows.map(s => ({
-                ...s, percentage: (parseInt(s.attended_count) / total) * 100
+            const studentMap = new Map();
+            for (const row of defaultersRes.rows) {
+                const rollNo = (row.roll_number || '').trim();
+                const key = rollNo ? rollNo : row.id;
+                
+                if (!studentMap.has(key)) {
+                    studentMap.set(key, {
+                        ...row,
+                        attended_count: parseInt(row.attended_count)
+                    });
+                } else {
+                    const existing = studentMap.get(key);
+                    existing.attended_count += parseInt(row.attended_count);
+                }
+            }
+
+            const defaulters = Array.from(studentMap.values()).map(s => ({
+                ...s, percentage: (s.attended_count / total) * 100
             })).filter(s => s.percentage < 75);
 
             // Send emails
