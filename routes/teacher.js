@@ -132,7 +132,7 @@ router.get('/reports/defaulters/:teacherId', async (req, res) => {
         res.json(defaulters);
     } catch (error) {
         console.error('❌ Error fetching defaulter report:', error.message);
-        res.status(500).json({ error: 'Failed to fetch report' });
+        res.status(500).json({ error: 'Failed to fetch report: ' + error.message });
     }
 });
 
