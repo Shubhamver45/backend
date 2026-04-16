@@ -95,10 +95,10 @@ router.get('/reports/defaulters/:teacherId', async (req, res) => {
         // Uses DISTINCT ON to deduplicate students by roll_number (if multiple accounts exist)
         const attendanceCountsResult = await pool.query(`
             WITH deduplicated_students AS (
-                SELECT DISTINCT ON (roll_number) id, name, roll_number, enrollment_number
+                SELECT DISTINCT ON (COALESCE(NULLIF(TRIM(roll_number), ''), id)) id, name, roll_number, enrollment_number
                 FROM users 
                 WHERE role = 'student'
-                ORDER BY roll_number, created_at DESC
+                ORDER BY COALESCE(NULLIF(TRIM(roll_number), ''), id), created_at DESC
             )
             SELECT ds.id, ds.name, ds.roll_number, ds.enrollment_number, COUNT(combined_att.lecture_id) as attended_count
             FROM deduplicated_students ds
@@ -141,10 +141,10 @@ router.post('/reports/send-alerts/:teacherId', async (req, res) => {
 
         const attendanceCountsResult = await pool.query(`
             WITH deduplicated_students AS (
-                SELECT DISTINCT ON (roll_number) id, name, roll_number, enrollment_number, subject_teacher_email, parents_email, mentor_email
+                SELECT DISTINCT ON (COALESCE(NULLIF(TRIM(roll_number), ''), id)) id, name, roll_number, enrollment_number, subject_teacher_email, parents_email, mentor_email
                 FROM users 
                 WHERE role = 'student'
-                ORDER BY roll_number, created_at DESC
+                ORDER BY COALESCE(NULLIF(TRIM(roll_number), ''), id), created_at DESC
             )
             SELECT ds.*, COUNT(combined_att.lecture_id) as attended_count
             FROM deduplicated_students ds

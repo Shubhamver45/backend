@@ -34,8 +34,8 @@ cron.schedule('0 0 1 * *', async () => {
 
             const defaultersRes = await pool.query(`
                 WITH deduplicated_students AS (
-                    SELECT DISTINCT ON (roll_number) id, name, roll_number, enrollment_number, subject_teacher_email, parents_email, mentor_email
-                    FROM users WHERE role = 'student' ORDER BY roll_number, created_at DESC
+                    SELECT DISTINCT ON (COALESCE(NULLIF(TRIM(roll_number), ''), id)) id, name, roll_number, enrollment_number, subject_teacher_email, parents_email, mentor_email
+                    FROM users WHERE role = 'student' ORDER BY COALESCE(NULLIF(TRIM(roll_number), ''), id), created_at DESC
                 )
                 SELECT ds.*, COUNT(combined_att.lecture_id) as attended_count
                 FROM deduplicated_students ds
