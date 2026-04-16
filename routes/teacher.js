@@ -93,7 +93,7 @@ router.get('/reports/defaulters/:teacherId', async (req, res) => {
 
         // Get student attendance counts across both Active and Archived tables
         const attendanceCountsResult = await pool.query(`
-            SELECT u.id, u.name, u.roll_number, u.enrollment_number, u.created_at, COUNT(combined_att.lecture_id) as attended_count
+            SELECT u.id, u.name, u.roll_number, u.enrollment_number, COUNT(combined_att.lecture_id) as attended_count
             FROM users u
             LEFT JOIN (
                 SELECT student_id, lecture_id FROM attendance WHERE lecture_id IN (SELECT id FROM lectures WHERE teacher_id = $1)
@@ -101,8 +101,7 @@ router.get('/reports/defaulters/:teacherId', async (req, res) => {
                 SELECT student_id, lecture_id FROM archived_attendance WHERE lecture_id IN (SELECT original_lecture_id FROM archived_lectures WHERE teacher_id = $1)
             ) combined_att ON u.id = combined_att.student_id
             WHERE u.role = 'student'
-            GROUP BY u.id, u.name, u.roll_number, u.enrollment_number, u.created_at
-            ORDER BY u.created_at DESC
+            GROUP BY u.id, u.name, u.roll_number, u.enrollment_number
         `, [teacherId]);
 
         // Safely deduplicate and combine attendance counts in JavaScript
@@ -160,8 +159,7 @@ router.post('/reports/send-alerts/:teacherId', async (req, res) => {
                 SELECT student_id, lecture_id FROM archived_attendance WHERE lecture_id IN (SELECT original_lecture_id FROM archived_lectures WHERE teacher_id = $1)
             ) combined_att ON u.id = combined_att.student_id
             WHERE u.role = 'student'
-            GROUP BY u.id, u.name, u.roll_number, u.enrollment_number, u.subject_teacher_email, u.parents_email, u.mentor_email, u.created_at, u.email, u.password, u.role
-            ORDER BY u.created_at DESC
+            GROUP BY u.id, u.name, u.roll_number, u.enrollment_number, u.subject_teacher_email, u.parents_email, u.mentor_email, u.email, u.password, u.role
         `, [teacherId]);
 
         // Safely deduplicate and combine attendance counts in JavaScript

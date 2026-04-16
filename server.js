@@ -41,8 +41,7 @@ cron.schedule('0 0 1 * *', async () => {
                     SELECT student_id, lecture_id FROM archived_attendance WHERE lecture_id IN (SELECT original_lecture_id FROM archived_lectures WHERE teacher_id = $1)
                 ) combined_att ON u.id = combined_att.student_id
                 WHERE u.role = 'student'
-                GROUP BY u.id, u.name, u.roll_number, u.enrollment_number, u.subject_teacher_email, u.parents_email, u.mentor_email, u.created_at, u.email, u.password, u.role
-                ORDER BY u.created_at DESC
+                GROUP BY u.id, u.name, u.roll_number, u.enrollment_number, u.subject_teacher_email, u.parents_email, u.mentor_email, u.email, u.password, u.role
             `, [teacher.id]);
 
             const studentMap = new Map();
