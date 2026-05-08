@@ -55,8 +55,30 @@ const sendDeficiencyEmail = async (student, contacts, percentage) => {
     };
 
     try {
-        await transporter.sendMail(mailOptions);
-        console.log(`✅ Deficiency alert sent for ${student.name} to ${recipients.length} recipients.`);
+        // BYPASS RENDER FIREWALL: If Google Script URL is provided, use HTTP API (Port 443) instead of SMTP (Port 465)
+        if (process.env.GOOGLE_SCRIPT_URL) {
+            console.log(`🚀 Sending email via Google Apps Script API to bypass Render firewall...`);
+            const response = await fetch(process.env.GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: mailOptions.to,
+                    subject: mailOptions.subject,
+                    html: mailOptions.html
+                })
+            });
+            
+            const result = await response.json();
+            if (result.status === 'success') {
+                console.log(`✅ Deficiency alert sent via Google Script for ${student.name} to ${recipients.length} recipients.`);
+            } else {
+                throw new Error(result.error || 'Unknown Google Script error');
+            }
+        } else {
+            // Local fallback (uses standard nodemailer SMTP)
+            await transporter.sendMail(mailOptions);
+            console.log(`✅ Deficiency alert sent via SMTP for ${student.name} to ${recipients.length} recipients.`);
+        }
     } catch (error) {
         console.error(`❌ Failed to send email for ${student.name}:`, error.message);
     }
