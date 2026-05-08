@@ -33,7 +33,7 @@ cron.schedule('0 0 1 * *', async () => {
             if (total === 0) continue;
 
             const defaultersRes = await pool.query(`
-                SELECT u.*, COUNT(combined_att.lecture_id) as attended_count
+                SELECT u.id, u.name, u.roll_number, u.enrollment_number, u.parents_email, u.mentor_email, u.subject_teacher_email, COUNT(combined_att.lecture_id) as attended_count
                 FROM users u
                 LEFT JOIN (
                     SELECT student_id, lecture_id FROM attendance WHERE lecture_id IN (SELECT id FROM lectures WHERE teacher_id = $1)
@@ -41,7 +41,7 @@ cron.schedule('0 0 1 * *', async () => {
                     SELECT student_id, lecture_id FROM archived_attendance WHERE lecture_id IN (SELECT original_lecture_id FROM archived_lectures WHERE teacher_id = $1)
                 ) combined_att ON u.id = combined_att.student_id
                 WHERE u.role = 'student'
-                GROUP BY u.id, u.name, u.roll_number, u.enrollment_number, u.subject_teacher_email, u.parents_email, u.mentor_email, u.email, u.password, u.role
+                GROUP BY u.id, u.name, u.roll_number, u.enrollment_number, u.parents_email, u.mentor_email, u.subject_teacher_email
             `, [teacher.id]);
 
             const studentMap = new Map();
