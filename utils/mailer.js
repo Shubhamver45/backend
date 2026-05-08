@@ -16,10 +16,10 @@ const transporter = nodemailer.createTransport({
  * @param {Number} percentage - Current attendance percentage
  */
 const sendDeficiencyEmail = async (student, contacts, percentage) => {
-    const { parents_email, mentor_email, subject_teacher_email } = contacts;
+    const { student_email, parents_email, mentor_email, subject_teacher_email } = contacts;
     
-    // Recipients list
-    const recipients = [parents_email, mentor_email, subject_teacher_email].filter(Boolean);
+    // Recipients list: Send to student too so testing works if parents email is empty!
+    const recipients = [student_email, parents_email, mentor_email, subject_teacher_email].filter(Boolean);
     
     if (recipients.length === 0) {
         console.log(`⚠️ No emails found for student ${student.name}. Skipping alert.`);
