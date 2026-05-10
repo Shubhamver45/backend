@@ -250,12 +250,13 @@ router.post('/lectures/:lectureId/manual-attendance', async (req, res) => {
                     [lectureId, record.studentId]
                 );
             } else {
-                // Present or Excused
+                // Present or Excused - First delete to avoid duplicates, then insert
                 await pool.query(
-                    `INSERT INTO attendance (lecture_id, student_id, status) 
-                     VALUES ($1, $2, $3) 
-                     ON CONFLICT (lecture_id, student_id) 
-                     DO UPDATE SET status = EXCLUDED.status, timestamp = CURRENT_TIMESTAMP`,
+                    'DELETE FROM attendance WHERE lecture_id = $1 AND student_id = $2',
+                    [lectureId, record.studentId]
+                );
+                await pool.query(
+                    'INSERT INTO attendance (lecture_id, student_id, status) VALUES ($1, $2, $3)',
                     [lectureId, record.studentId, record.status]
                 );
             }
