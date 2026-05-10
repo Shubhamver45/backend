@@ -1,6 +1,7 @@
 // backend/routes/admin.js
 const express = require('express');
 const pool = require('../db');
+const bcrypt = require('bcryptjs');
 const { verifyToken, verifyAdmin } = require('../middleware/auth');
 const router = express.Router();
 
@@ -356,6 +357,119 @@ router.delete('/lectures/:lectureId', async (req, res) => {
     } catch (error) {
         console.error('❌ Error deleting lecture:', error.message);
         res.status(500).json({ error: 'Failed to delete lecture' });
+    }
+});
+
+// ─── Add New User ──────────────────────────────────────────
+router.post('/users', async (req, res) => {
+    const { id, name, email, password, role, roll_number, enrollment_number, subject_teacher_email, parents_email, mentor_email } = req.body;
+    if (!id || !name || !email || !password || !role) {
+        return res.status(400).json({ error: 'ID, name, email, password, and role are required' });
+    }
+    try {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+        const query = 'INSERT INTO users (id, name, email, password, role, roll_number, enrollment_number, subject_teacher_email, parents_email, mentor_email) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)';
+        const values = [id, name, email, hashedPassword, role, roll_number || null, enrollment_number || null, subject_teacher_email || null, parents_email || null, mentor_email || null];
+        await pool.query(query, values);
+        res.status(201).json({ message: 'User created successfully' });
+    } catch (error) {
+        console.error('❌ Error creating user:', error.message);
+        if (error.code === '23505') return res.status(409).json({ error: 'Email or ID already exists' });
+        res.status(500).json({ error: 'Failed to create user' });
+    }
+});
+
+// ─── Update User ───────────────────────────────────────────
+router.put('/users/:userId', async (req, res) => {
+    const { userId } = req.params;
+    const { name, email, role, roll_number, enrollment_number, subject_teacher_email, parents_email, mentor_email } = req.body;
+    try {
+        const query = `
+            UPDATE users 
+            SET name = $1, email = $2, role = $3, roll_number = $4, enrollment_number = $5, subject_teacher_email = $6, parents_email = $7, mentor_email = $8
+            WHERE id = $9
+        `;
+        const values = [name, email, role, roll_number || null, enrollment_number || null, subject_teacher_email || null, parents_email || null, mentor_email || null, userId];
+        await pool.query(query, values);
+        res.json({ message: 'User updated successfully' });
+    } catch (error) {
+        console.error('❌ Error updating user:', error.message);
+        if (error.code === '23505') return res.status(409).json({ error: 'Email already exists' });
+        res.status(500).json({ error: 'Failed to update user' });
+    }
+});
+
+// ─── Reset User Password ───────────────────────────────────
+router.put('/users/:userId/reset-password', async (req, res) => {
+    const { userId } = req.params;
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
+    try {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+        await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
+        res.json({ message: 'Password reset successfully' });
+    } catch (error) {
+        console.error('❌ Error resetting password:', error.message);
+        res.status(500).json({ error: 'Failed to reset password' });
+    }
+});
+
+// ─── Add Lecture ───────────────────────────────────────────
+router.post('/lectures', async (req, res) => {
+    const { subject, date, time, teacher_id, latitude, longitude, radius } = req.body;
+    if (!subject || !date || !time || !teacher_id) {
+        return res.status(400).json({ error: 'Subject, date, time, and teacher_id are required' });
+    }
+    const name = `${subject} - ${date}`;
+    try {
+        const query = `
+            INSERT INTO lectures (name, subject, date, time, teacher_id, latitude, longitude, radius) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+            RETURNING id
+        `;
+        const values = [name, subject, date, time, teacher_id, latitude || null, longitude || null, radius || 100];
+        const result = await pool.query(query, values);
+        res.status(201).json({ message: 'Lecture created successfully', id: result.rows[0].id });
+    } catch (error) {
+        console.error('❌ Error creating lecture:', error.message);
+        res.status(500).json({ error: 'Failed to create lecture' });
+    }
+});
+
+// ─── Update Lecture ────────────────────────────────────────
+router.put('/lectures/:lectureId', async (req, res) => {
+    const { lectureId } = req.params;
+    const { subject, date, time, teacher_id, latitude, longitude, radius } = req.body;
+    const name = subject && date ? `${subject} - ${date}` : null;
+    try {
+        let query = 'UPDATE lectures SET ';
+        const updates = [];
+        const values = [];
+        let index = 1;
+        
+        if (name) { updates.push(`name = $${index++}`); values.push(name); }
+        if (subject) { updates.push(`subject = $${index++}`); values.push(subject); }
+        if (date) { updates.push(`date = $${index++}`); values.push(date); }
+        if (time) { updates.push(`time = $${index++}`); values.push(time); }
+        if (teacher_id) { updates.push(`teacher_id = $${index++}`); values.push(teacher_id); }
+        if (latitude !== undefined) { updates.push(`latitude = $${index++}`); values.push(latitude); }
+        if (longitude !== undefined) { updates.push(`longitude = $${index++}`); values.push(longitude); }
+        if (radius !== undefined) { updates.push(`radius = $${index++}`); values.push(radius); }
+
+        if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
+
+        query += updates.join(', ') + ` WHERE id = $${index}`;
+        values.push(lectureId);
+
+        await pool.query(query, values);
+        res.json({ message: 'Lecture updated successfully' });
+    } catch (error) {
+        console.error('❌ Error updating lecture:', error.message);
+        res.status(500).json({ error: 'Failed to update lecture' });
     }
 });
 
