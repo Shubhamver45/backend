@@ -473,4 +473,65 @@ router.put('/lectures/:lectureId', async (req, res) => {
     }
 });
 
+// Phase 2: Leave Application System
+// Get all leaves
+router.get('/leaves', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT l.*, u.name as student_name, u.roll_number 
+            FROM leaves l 
+            JOIN users u ON l.student_id = u.id 
+            ORDER BY l.created_at DESC
+        `);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('❌ Error fetching leaves:', error.message);
+        res.status(500).json({ error: 'Failed to fetch leaves' });
+    }
+});
+
+// Approve/Reject leave
+router.put('/leaves/:leaveId', async (req, res) => {
+    try {
+        const { leaveId } = req.params;
+        const { status } = req.body; // 'approved' or 'rejected'
+        
+        if (!['approved', 'rejected'].includes(status)) {
+            return res.status(400).json({ error: 'Invalid status' });
+        }
+
+        // 1. Update the leave status
+        const leaveRes = await pool.query(
+            'UPDATE leaves SET status = $1 WHERE id = $2 RETURNING *',
+            [status, leaveId]
+        );
+        
+        const leave = leaveRes.rows[0];
+        if (!leave) return res.status(404).json({ error: 'Leave not found' });
+
+        // 2. If approved, mark student as 'excused' for all lectures in that date range
+        if (status === 'approved') {
+            const lecturesRes = await pool.query(
+                'SELECT id FROM lectures WHERE date >= $1 AND date <= $2',
+                [leave.start_date, leave.end_date]
+            );
+            
+            for (const lecture of lecturesRes.rows) {
+                await pool.query(
+                    `INSERT INTO attendance (lecture_id, student_id, status) 
+                     VALUES ($1, $2, 'excused') 
+                     ON CONFLICT (lecture_id, student_id) 
+                     DO UPDATE SET status = 'excused'`,
+                    [lecture.id, leave.student_id]
+                );
+            }
+        }
+        
+        res.json({ message: `Leave ${status} successfully` });
+    } catch (error) {
+        console.error('❌ Error updating leave:', error.message);
+        res.status(500).json({ error: 'Failed to update leave' });
+    }
+});
+
 module.exports = router;

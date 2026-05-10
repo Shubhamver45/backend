@@ -26,13 +26,31 @@ const config = {
 pool = new Pool(config);
 
 // Test database connection on startup
-pool.query('SELECT NOW()', (err, res) => {
+pool.query('SELECT NOW()', async (err, res) => {
     if (err) {
         console.error('❌ Database connection failed:', err.message);
         console.error('⚠️  Server will continue — pool will retry connections automatically.');
         return;
     }
     console.log('✅ Database connected successfully at', res.rows[0].now);
+
+    // Phase 2: Create leaves table if it doesn't exist
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS leaves (
+                id SERIAL PRIMARY KEY,
+                student_id VARCHAR(50) REFERENCES users(id),
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                reason TEXT NOT NULL,
+                status VARCHAR(20) DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        console.log('✅ Leaves table initialized.');
+    } catch (tableErr) {
+        console.error('❌ Error initializing leaves table:', tableErr.message);
+    }
 });
 
 // Handle pool errors

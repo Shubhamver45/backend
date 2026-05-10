@@ -223,12 +223,51 @@ router.get('/lectures/:lectureId/attendance', async (req, res) => {
         const result = await pool.query(query, [req.params.lectureId]);
         res.json(result.rows);
     } catch (error) {
-        console.error('Ã¢ÂÅ’ Error fetching attendance:', error.message);
-        res.status(500).json({ error: 'Failed to fetch attendance' });
+        console.error('Ã¢Â Å’ Error fetching attendance:', error.message);
+        res.status(500).json({ error: 'Failed to fetch all attendance records' });
     }
 });
 
-// Get attendance report for a specific lecture
+// Phase 1: Manual Attendance Override
+router.post('/lectures/:lectureId/manual-attendance', async (req, res) => {
+    try {
+        const { lectureId } = req.params;
+        const { attendanceData } = req.body; // Array of { studentId, status }
+        
+        // Ensure lecture exists
+        const lectureCheck = await pool.query('SELECT * FROM lectures WHERE id = $1', [lectureId]);
+        if (lectureCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Lecture not found' });
+        }
+
+        // Process each student
+        for (const record of attendanceData) {
+            if (record.status === 'absent') {
+                // If absent, we remove them from the attendance table 
+                // OR we could mark status as 'absent', but deleting is cleaner based on original schema
+                await pool.query(
+                    'DELETE FROM attendance WHERE lecture_id = $1 AND student_id = $2',
+                    [lectureId, record.studentId]
+                );
+            } else {
+                // Present or Excused
+                await pool.query(
+                    `INSERT INTO attendance (lecture_id, student_id, status) 
+                     VALUES ($1, $2, $3) 
+                     ON CONFLICT (lecture_id, student_id) 
+                     DO UPDATE SET status = EXCLUDED.status, timestamp = CURRENT_TIMESTAMP`,
+                    [lectureId, record.studentId, record.status]
+                );
+            }
+        }
+        res.json({ message: 'Attendance updated manually' });
+    } catch (error) {
+        console.error('❌ Error in manual override:', error);
+        res.status(500).json({ error: 'Failed to update attendance' });
+    }
+});
+
+// Get live attendance for a specific lecture
 router.get('/lecture-report/:lectureId', async (req, res) => {
     try {
         const query = `

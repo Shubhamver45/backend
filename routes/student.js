@@ -104,4 +104,40 @@ router.put('/profile/:studentId', async (req, res) => {
     }
 });
 
+// Phase 2: Leave Application System
+// Apply for leave
+router.post('/leaves', async (req, res) => {
+    try {
+        const { studentId, start_date, end_date, reason } = req.body;
+        
+        if (!studentId || !start_date || !end_date || !reason) {
+            return res.status(400).json({ error: 'All fields are required' });
+        }
+
+        await pool.query(
+            'INSERT INTO leaves (student_id, start_date, end_date, reason) VALUES ($1, $2, $3, $4)',
+            [studentId, start_date, end_date, reason]
+        );
+        res.status(201).json({ message: 'Leave application submitted successfully' });
+    } catch (error) {
+        console.error('❌ Error applying for leave:', error.message);
+        res.status(500).json({ error: 'Failed to apply for leave' });
+    }
+});
+
+// Get student's leaves
+router.get('/leaves/:studentId', async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const result = await pool.query(
+            'SELECT * FROM leaves WHERE student_id = $1 ORDER BY created_at DESC',
+            [studentId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('❌ Error fetching leaves:', error.message);
+        res.status(500).json({ error: 'Failed to fetch leaves' });
+    }
+});
+
 module.exports = router;
