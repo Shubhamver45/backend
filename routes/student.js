@@ -118,7 +118,22 @@ router.post('/leaves', async (req, res) => {
             'INSERT INTO leaves (student_id, start_date, end_date, reason) VALUES ($1, $2, $3, $4)',
             [studentId, start_date, end_date, reason]
         );
-        res.status(201).json({ message: 'Leave application submitted successfully' });
+
+        // Fetch student name and teacher email for notification
+        try {
+            const studentRes = await pool.query('SELECT name, subject_teacher_email FROM users WHERE id = $1', [studentId]);
+            if (studentRes.rows.length > 0) {
+                const { name, subject_teacher_email } = studentRes.rows[0];
+                if (subject_teacher_email) {
+                    const { sendLeaveNotificationEmail } = require('../utils/mailer');
+                    await sendLeaveNotificationEmail(name, subject_teacher_email, { start_date, end_date, reason });
+                }
+            }
+        } catch (mailErr) {
+            console.error('⚠️ Could not send leave notification email:', mailErr.message);
+        }
+
+        res.status(201).json({ message: 'Leave application submitted successfully. Your Class Teacher has been notified.' });
     } catch (error) {
         console.error('❌ Error applying for leave:', error.message);
         res.status(500).json({ error: 'Failed to apply for leave' });

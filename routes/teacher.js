@@ -2,7 +2,10 @@
 const express = require('express');
 const pool = require('../db');
 const { sendDeficiencyEmail } = require('../utils/mailer');
+const { verifyToken, verifyTeacher } = require('../middleware/auth');
 const router = express.Router();
+
+router.use(verifyToken, verifyTeacher);
 
 // Create a new lecture
 router.post('/lectures', async (req, res) => {
@@ -457,6 +460,90 @@ router.get('/reports/monthly/:teacherId', async (req, res) => {
     } catch (error) {
         console.error('Error fetching monthly report:', error.message);
         res.status(500).json({ error: 'Failed to fetch monthly report' });
+    }
+});
+
+// Phase 2: Leave Application System for Teachers
+// Get leaves for students assigned to this teacher
+router.get('/leaves', async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        // Fetch the teacher's email to match against student.subject_teacher_email
+        const teacherRes = await pool.query('SELECT email FROM users WHERE id = $1', [teacherId]);
+        if (teacherRes.rows.length === 0) return res.status(404).json({ error: 'Teacher not found' });
+        
+        const teacherEmail = teacherRes.rows[0].email;
+
+        const result = await pool.query(`
+            SELECT l.*, u.name as student_name, u.roll_number 
+            FROM leaves l 
+            JOIN users u ON l.student_id = u.id 
+            WHERE u.subject_teacher_email = $1
+            ORDER BY l.created_at DESC
+        `, [teacherEmail]);
+        
+        res.json(result.rows);
+    } catch (error) {
+        console.error('❌ Error fetching teacher leaves:', error.message);
+        res.status(500).json({ error: 'Failed to fetch leaves' });
+    }
+});
+
+// Approve/Reject leave (Teacher)
+router.put('/leaves/:leaveId', async (req, res) => {
+    try {
+        const { leaveId } = req.params;
+        const { status } = req.body; // 'approved' or 'rejected'
+        const teacherId = req.user.id;
+
+        if (!['approved', 'rejected'].includes(status)) {
+            return res.status(400).json({ error: 'Invalid status' });
+        }
+
+        // Verify that this leave belongs to a student of this teacher
+        const teacherRes = await pool.query('SELECT email FROM users WHERE id = $1', [teacherId]);
+        const teacherEmail = teacherRes.rows[0].email;
+
+        const leaveCheck = await pool.query(`
+            SELECT l.* FROM leaves l 
+            JOIN users u ON l.student_id = u.id 
+            WHERE l.id = $1 AND u.subject_teacher_email = $2
+        `, [leaveId, teacherEmail]);
+
+        if (leaveCheck.rows.length === 0) {
+            return res.status(403).json({ error: 'Unauthorized to manage this leave request' });
+        }
+
+        // Update the leave status
+        const leaveRes = await pool.query(
+            'UPDATE leaves SET status = $1 WHERE id = $2 RETURNING *',
+            [status, leaveId]
+        );
+        
+        const leave = leaveRes.rows[0];
+
+        // If approved, mark student as 'excused' for all lectures in that date range
+        if (status === 'approved') {
+            const lecturesRes = await pool.query(
+                'SELECT id FROM lectures WHERE date >= $1 AND date <= $2',
+                [leave.start_date, leave.end_date]
+            );
+            
+            for (const lecture of lecturesRes.rows) {
+                await pool.query(
+                    `INSERT INTO attendance (lecture_id, student_id, status) 
+                     VALUES ($1, $2, 'excused') 
+                     ON CONFLICT (lecture_id, student_id) 
+                     DO UPDATE SET status = 'excused'`,
+                    [lecture.id, leave.student_id]
+                );
+            }
+        }
+        
+        res.json({ message: `Leave ${status} successfully` });
+    } catch (error) {
+        console.error('❌ Error updating leave (teacher):', error.message);
+        res.status(500).json({ error: 'Failed to update leave' });
     }
 });
 

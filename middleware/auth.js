@@ -27,4 +27,12 @@ const verifyAdmin = (req, res, next) => {
     next();
 };
 
-module.exports = { verifyToken, verifyAdmin };
+// Middleware to verify teacher role (must be used AFTER verifyToken)
+const verifyTeacher = (req, res, next) => {
+    if (!req.user || req.user.role !== 'teacher') {
+        return res.status(403).json({ error: 'Access denied. Teacher privileges required.' });
+    }
+    next();
+};
+
+module.exports = { verifyToken, verifyAdmin, verifyTeacher };

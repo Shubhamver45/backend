@@ -84,4 +84,55 @@ const sendDeficiencyEmail = async (student, contacts, percentage) => {
     }
 };
 
-module.exports = { sendDeficiencyEmail };
+/**
+ * Sends a Leave Request Notification email to the Class Teacher
+ */
+const sendLeaveNotificationEmail = async (studentName, teacherEmail, leaveDetails) => {
+    if (!teacherEmail) return;
+
+    const mailOptions = {
+        from: `"Smart Attendance System" <${process.env.EMAIL_USER}>`,
+        to: teacherEmail,
+        subject: `📝 Leave Request: ${studentName}`,
+        html: `
+            <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;">
+                <h2 style="color: #052659; margin-top: 0;">New Leave Request</h2>
+                <p>Hello Teacher,</p>
+                <p>A new leave request has been submitted by <strong>${studentName}</strong> and is awaiting your review.</p>
+                
+                <div style="background-color: #f8fafc; padding: 20px; border-radius: 12px; margin: 20px 0; border-left: 4px solid #052659;">
+                    <p style="margin: 5px 0;"><strong>Date Range:</strong> ${leaveDetails.start_date} to ${leaveDetails.end_date}</p>
+                    <p style="margin: 5px 0;"><strong>Reason:</strong> ${leaveDetails.reason}</p>
+                </div>
+                
+                <p>Please log in to the Smart Attendance System dashboard to Approve or Reject this request.</p>
+                
+                <div style="text-align: center; margin-top: 30px;">
+                    <a href="https://smart-attendance-system-virid.vercel.app" style="background-color: #052659; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold;">Review Request</a>
+                </div>
+                
+                <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 30px 0;" />
+                <p style="font-size: 12px; color: #64748b; text-align: center;">
+                    This is an automated notification from the Smart Attendance System.
+                </p>
+            </div>
+        `
+    };
+
+    try {
+        if (process.env.GOOGLE_SCRIPT_URL) {
+            await fetch(process.env.GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ to: mailOptions.to, subject: mailOptions.subject, html: mailOptions.html })
+            });
+        } else {
+            await transporter.sendMail(mailOptions);
+        }
+        console.log(`✅ Leave notification sent to ${teacherEmail}`);
+    } catch (error) {
+        console.error(`❌ Failed to send leave notification:`, error.message);
+    }
+};
+
+module.exports = { sendDeficiencyEmail, sendLeaveNotificationEmail };
