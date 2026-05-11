@@ -48,8 +48,14 @@ pool.query('SELECT NOW()', async (err, res) => {
             );
         `);
         console.log('✅ Leaves table initialized.');
+
+        // Phase 4: Add face_embedding to users table
+        await pool.query(`
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS face_embedding TEXT;
+        `);
+        console.log('✅ Users table updated with face_embedding column.');
     } catch (tableErr) {
-        console.error('❌ Error initializing leaves table:', tableErr.message);
+        console.error('❌ Error initializing database tables:', tableErr.message);
     }
 });
 
