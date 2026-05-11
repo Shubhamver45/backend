@@ -27,6 +27,24 @@ router.post('/mark-attendance', async (req, res) => {
             [lectureId, studentId, 'present']
         );
         
+        // Emit live WebSocket event
+        if (req.io) {
+            try {
+                const lectureRes = await pool.query('SELECT teacher_id FROM lectures WHERE id = $1', [lectureId]);
+                if (lectureRes.rows.length > 0) {
+                    const teacherId = lectureRes.rows[0].teacher_id;
+                    req.io.to(`teacher_${teacherId}`).emit('attendance_marked', { 
+                        lectureId: parseInt(lectureId), 
+                        studentId: parseInt(studentId),
+                        status: 'present',
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            } catch (err) {
+                console.error('WebSocket emit error:', err);
+            }
+        }
+        
         res.status(201).json({ 
             message: 'Attendance marked successfully',
             newRecordId: result.rows[0].id 

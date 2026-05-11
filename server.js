@@ -4,6 +4,8 @@ const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
 
 const authRoutes = require('./routes/auth');
 const teacherRoutes = require('./routes/teacher');
@@ -95,6 +97,35 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Socket.io Setup
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: '*',
+        methods: ['GET', 'POST']
+    }
+});
+
+io.on('connection', (socket) => {
+    console.log(`🔌 New client connected: ${socket.id}`);
+    
+    // Allow teachers to join a room specific to their teacher ID
+    socket.on('join_teacher_room', (teacherId) => {
+        socket.join(`teacher_${teacherId}`);
+        console.log(`👨‍🏫 Client ${socket.id} joined room: teacher_${teacherId}`);
+    });
+
+    socket.on('disconnect', () => {
+        console.log(`❌ Client disconnected: ${socket.id}`);
+    });
+});
+
+// Make io accessible in routes
+app.use((req, res, next) => {
+    req.io = io;
+    next();
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/teacher', teacherRoutes);
@@ -144,7 +175,7 @@ app.use((err, req, res, next) => {
     });
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log('🚀 Server started successfully');
     console.log(`📡 Listening on port ${PORT}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
