@@ -517,11 +517,11 @@ router.put('/leaves/:leaveId', async (req, res) => {
             );
             
             for (const lecture of lecturesRes.rows) {
+                // DELETE-THEN-INSERT Pattern: Bypasses unique constraints safely
+                await pool.query('DELETE FROM attendance WHERE lecture_id = $1 AND student_id = $2', [lecture.id, leave.student_id]);
                 await pool.query(
                     `INSERT INTO attendance (lecture_id, student_id, status) 
-                     VALUES ($1, $2, 'excused') 
-                     ON CONFLICT (lecture_id, student_id) 
-                     DO UPDATE SET status = 'excused'`,
+                     VALUES ($1, $2, 'excused')`,
                     [lecture.id, leave.student_id]
                 );
             }
